@@ -48,11 +48,36 @@ export class CallAnnotations {
   // boardId -> `${author}:${strokeId}` -> stroke. Deliberately non-reactive.
   readonly #boards = new Map<string, Map<string, BoardStroke>>();
   #revision = 0;
+  #nextStrokeId = 1;
+  readonly #listeners = new Set<() => void>();
 
   constructor(key: CryptoKey, localIdentity: string, publish: AnnotationPublish) {
     this.#key = key;
     this.#localIdentity = localIdentity;
     this.#publish = publish;
+  }
+
+  /**
+   * Allocate a stroke id for a new local stroke. Instance-scoped (one controller
+   * per call) so ids stay unique for this sender even when several overlay tiles
+   * of the same board draw concurrently.
+   */
+  nextStrokeId(): number {
+    return this.#nextStrokeId++;
+  }
+
+  /**
+   * Register a plain (non-reactive) callback invoked whenever stroke state
+   * changes, so overlays can schedule a repaint frame. Returns an unsubscribe
+   * function.
+   */
+  subscribe(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #notify(): void {
+    for (const listener of this.#listeners) listener();
   }
 
   /**
@@ -105,6 +130,7 @@ export class CallAnnotations {
     points: NormalizedPoint[]
   ): Promise<void> {
     this.#record(boardId, this.#localIdentity, strokeId, colorIndex, size, 0, points, true);
+    this.#notify();
     await this.#send(
       {
         type: AnnotationFrameType.StrokeCommit,
@@ -121,6 +147,7 @@ export class CallAnnotations {
   /** Clear the whole board or just this participant's own strokes. */
   async publishClear(boardId: string, scope: ClearScope): Promise<void> {
     this.#applyClear(boardId, scope, this.#localIdentity);
+    this.#notify();
     await this.#send({ type: AnnotationFrameType.Clear, boardId, scope }, true);
   }
 
@@ -134,7 +161,10 @@ export class CallAnnotations {
     const plaintext = await open(this.#key, payload);
     if (!plaintext) return;
     const frame = decodeAnnotationFrame(plaintext);
-    if (frame) this.#apply(frame, senderIdentity);
+    if (frame) {
+      this.#apply(frame, senderIdentity);
+      this.#notify();
+    }
   }
 
   /** Drop all stroke state (call end). */
@@ -142,6 +172,7 @@ export class CallAnnotations {
     if (this.#boards.size === 0) return;
     this.#boards.clear();
     this.#revision += 1;
+    this.#notify();
   }
 
   #apply(frame: AnnotationFrame, sender: string): void {

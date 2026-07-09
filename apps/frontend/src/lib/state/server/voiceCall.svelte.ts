@@ -188,6 +188,13 @@ export class VoiceCallState {
    */
   annotations = $state<CallAnnotations | null>(null);
 
+  /**
+   * Whether this viewer's drawing mode is armed. While false, annotation
+   * overlays stay view-only (remote strokes render, pointer input passes
+   * through to the tile beneath).
+   */
+  isAnnotating = $state(false);
+
   // Participants (including local)
   participants = $state<CallParticipantInfo[]>([]);
 
@@ -764,6 +771,11 @@ export class VoiceCallState {
     }
   }
 
+  /** Arm or disarm this viewer's screen-share drawing mode. */
+  toggleAnnotating(): void {
+    this.isAnnotating = !this.isAnnotating;
+  }
+
   private setupRoomEventListeners(): void {
     if (!this.room) return;
 
@@ -1014,6 +1026,7 @@ export class VoiceCallState {
     this.e2eeWorker = null;
     this.annotations?.clear();
     this.annotations = null;
+    this.isAnnotating = false;
     if (wasConnected && disconnectedRoomId && disconnectedCallId) {
       this.recentlyDisconnectedCall = {
         roomId: disconnectedRoomId,

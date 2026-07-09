@@ -27,6 +27,7 @@ resolution to request for sidebar-width tiles.
 	import type { PresenceStatus } from '$lib/render/types';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
 	import AnnotationOverlay from './annotation/AnnotationOverlay.svelte';
+	import type { CallAnnotations } from './annotation/callAnnotations';
 
 	let {
 		track,
@@ -35,7 +36,10 @@ resolution to request for sidebar-width tiles.
 		showIdentityOverlay = true,
 		fit = 'cover',
 		fill = false,
-		annotate = false
+		annotate = false,
+		annotations = null,
+		annotationBoardId = '',
+		annotationCanDraw = false
 	}: {
 		track: Track;
 		name: string;
@@ -50,6 +54,9 @@ resolution to request for sidebar-width tiles.
 		fit?: 'cover' | 'contain';
 		fill?: boolean;
 		annotate?: boolean;
+		annotations?: CallAnnotations | null;
+		annotationBoardId?: string;
+		annotationCanDraw?: boolean;
 	} = $props();
 
 	let videoEl = $state<HTMLVideoElement | null>(null);
@@ -112,6 +119,11 @@ resolution to request for sidebar-width tiles.
 		</div>
 	{/if}
 	{#if annotate}
-		<AnnotationOverlay {videoEl} />
+		<AnnotationOverlay
+			{videoEl}
+			{annotations}
+			boardId={annotationBoardId}
+			canDraw={annotationCanDraw}
+		/>
 	{/if}
 </div>

@@ -220,7 +220,9 @@ Room sidebar panel for voice/video calls.
   );
   let stageTiles = $derived([...screenShareTiles, ...participantTiles]);
   let featuredStageTile = $derived(
-    screenShareTiles[0] ?? participantTiles.find((tile) => tile.kind === 'video') ?? participantTiles[0]
+    screenShareTiles[0] ??
+      participantTiles.find((tile) => tile.kind === 'video') ??
+      participantTiles[0]
   );
   let secondaryStageTiles = $derived(
     featuredStageTile ? stageTiles.filter((tile) => tile.key !== featuredStageTile.key) : []
@@ -270,7 +272,10 @@ Room sidebar panel for voice/video calls.
       const opacity = audioLevel > 0.01 ? 0.35 + Math.pow(audioLevel, 0.35) * 0.65 : 0;
       const visible = isSpeaking || opacity > 0;
 
-      node.style.setProperty('--call-speaking-ring-opacity', visible ? String(opacity || 0.85) : '0');
+      node.style.setProperty(
+        '--call-speaking-ring-opacity',
+        visible ? String(opacity || 0.85) : '0'
+      );
       node.style.setProperty('--call-speaking-ring-strength', visible ? String(audioLevel) : '0');
       node.dataset.callSpeaking = visible ? 'true' : 'false';
     }
@@ -374,7 +379,9 @@ Room sidebar panel for voice/video calls.
 </script>
 
 {#snippet localMuteButton(participant: DisplayParticipant)}
-  {@const isMutedForViewer = participant.isLocal ? voiceCallState.isMuted : participant.isLocallyMuted}
+  {@const isMutedForViewer = participant.isLocal
+    ? voiceCallState.isMuted
+    : participant.isLocallyMuted}
   <CallTileActionButton
     icon={isMutedForViewer ? 'uil--volume-mute' : 'uil--volume-up'}
     active={isMutedForViewer}
@@ -557,6 +564,10 @@ Room sidebar panel for voice/video calls.
         user={participant.avatarUser}
         showIdentityOverlay={false}
         fit="contain"
+        annotate={isInThisCall && !!voiceCallState.annotations}
+        annotations={voiceCallState.annotations}
+        annotationBoardId={participant.key}
+        annotationCanDraw={voiceCallState.isAnnotating}
       />
     </button>
   </div>
@@ -567,7 +578,7 @@ Room sidebar panel for voice/video calls.
   {@const isScreen = tile.kind === 'screen'}
   {@const isVideo = tile.kind === 'video'}
   <div
-    class={[callTileCardClass, 'h-full min-h-0 participant-card-video']}
+    class={[callTileCardClass, 'participant-card-video h-full min-h-0']}
     {@attach isInThisCall && speakingCard(participant.key)}
     title={isScreen
       ? m['voice.screen_title']({ name: participant.displayName })
@@ -578,7 +589,9 @@ Room sidebar panel for voice/video calls.
   >
     {@render participantHeader(
       participant,
-      isScreen ? m['voice.screen_title']({ name: participant.displayName }) : participant.displayName,
+      isScreen
+        ? m['voice.screen_title']({ name: participant.displayName })
+        : participant.displayName,
       isScreen || isVideo ? 'media' : 'voice',
       true
     )}
@@ -599,6 +612,10 @@ Room sidebar panel for voice/video calls.
           showIdentityOverlay={false}
           fit="contain"
           fill
+          annotate={isInThisCall && !!voiceCallState.annotations}
+          annotations={voiceCallState.annotations}
+          annotationBoardId={participant.key}
+          annotationCanDraw={voiceCallState.isAnnotating}
         />
       {:else if isVideo}
         <VideoThumbnail
@@ -693,7 +710,9 @@ Room sidebar panel for voice/video calls.
 
         <button
           type="button"
-          class={voiceCallState.isScreenShareEnabled ? activeControlButtonClass : controlButtonClass}
+          class={voiceCallState.isScreenShareEnabled
+            ? activeControlButtonClass
+            : controlButtonClass}
           title={voiceCallState.isScreenShareEnabled
             ? m['voice.stop_share_screen']()
             : m['voice.share_screen']()}

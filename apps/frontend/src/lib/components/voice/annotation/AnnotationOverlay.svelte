@@ -6,38 +6,53 @@ canvases sized to the letterboxed video content box:
 
 - a **committed** layer, repainted only when finished strokes change or the
   geometry resizes, and
-- a **live** layer, repainted each animation frame with the in-progress stroke.
+- a **live** layer, repainted per animation frame with in-progress strokes.
 
-All high-frequency drawing state (in-flight points, committed strokes, geometry)
-is kept in plain, non-reactive variables and painted imperatively on demand, the
-same discipline as the call's audio-level loop — 30-60 Hz pointer data never
-flows through `$state`/`$derived`.
+When given a `CallAnnotations` controller and a `boardId`, the overlay is fully
+synchronized: local strokes are published through the controller (lossy deltas
+per frame while drawing, a reliable commit on pointer up) and remote strokes are
+painted from the controller's non-reactive stroke state, repainting only when
+the controller signals a change. Without a controller it draws locally only.
+
+All high-frequency drawing state is kept in plain, non-reactive variables and
+painted imperatively on demand, the same discipline as the call's audio-level
+loop — 30-60 Hz pointer data never flows through `$state`/`$derived`.
 
 Coordinates are normalized [0,1] over the video content box (see coords.ts) so a
-stroke lands on the same shared-content pixel for every viewer. This milestone
-draws locally and reports finished strokes via `oncommit`; the transport that
-mirrors strokes to other participants is wired separately.
+stroke lands on the same shared-content pixel for every viewer.
 -->
 <script lang="ts">
+  import type { CallAnnotations } from './callAnnotations';
   import { clampToUnit, contentRect, isInsideUnit, toNormalized } from './coords';
+  import { colorForIndex, DEFAULT_BRUSH_SIZE, DEFAULT_COLOR_INDEX } from './palette';
   import { renderStroke, type RenderableStroke } from './renderStrokes';
   import type { AnnotationCommit, AnnotationTool, NormalizedPoint } from './types';
 
+  // Largest point batch for one lossy delta frame; keeps the sealed datagram
+  // comfortably under the ~1300 byte MTU budget (4 bytes per point + header).
+  const MAX_DELTA_POINTS = 120;
+
   let {
     videoEl,
+    annotations = null,
+    boardId = '',
     canDraw = true,
     tool = 'pen',
-    color = '#f59e0b',
-    size = 4,
+    colorIndex = DEFAULT_COLOR_INDEX,
+    size = DEFAULT_BRUSH_SIZE,
     oncommit
   }: {
     /** The screen-share video to overlay; provides intrinsic size for mapping. */
     videoEl: HTMLVideoElement | null;
+    /** Transport controller; when set with `boardId`, strokes sync to the call. */
+    annotations?: CallAnnotations | null;
+    /** Identity of the participant whose shared screen this overlay covers. */
+    boardId?: string;
     /** When false the surface ignores pointer input (view-only). */
     canDraw?: boolean;
     tool?: AnnotationTool;
-    /** Resolved CSS color for new strokes. */
-    color?: string;
+    /** Palette index for new strokes (see palette.ts). */
+    colorIndex?: number;
     /** Brush diameter in CSS pixels. */
     size?: number;
     /** Called with the finished stroke when the pointer lifts. */
@@ -53,10 +68,13 @@ mirrors strokes to other participants is wired separately.
   // touches Svelte's reactive graph. Painted imperatively via requestAnimationFrame.
   let committedContext: CanvasRenderingContext2D | null = null;
   let liveContext: CanvasRenderingContext2D | null = null;
-  let committed: RenderableStroke[] = [];
+  let localCommitted: RenderableStroke[] = [];
   let currentPoints: NormalizedPoint[] | null = null;
+  let currentStrokeId = 0;
+  let sentPointCount = 0;
   let activePointerId: number | null = null;
   let committedDirty = false;
+  let renderedRevision = -1;
   let rafId: number | null = null;
 
   // Cached geometry (CSS pixels + intrinsic source size), refreshed on resize.
@@ -88,24 +106,63 @@ mirrors strokes to other participants is wired separately.
     rafId = requestAnimationFrame(renderFrame);
   }
 
+  function committedStrokes(): RenderableStroke[] {
+    return annotations && boardId ? annotations.committedStrokes(boardId) : localCommitted;
+  }
+
+  function pendingRemoteStrokes(): RenderableStroke[] {
+    return annotations && boardId ? annotations.pendingStrokes(boardId) : [];
+  }
+
+  function flushStrokeDelta(): void {
+    if (!annotations || !boardId || !currentPoints || currentPoints.length <= sentPointCount) {
+      return;
+    }
+    const batch = currentPoints.slice(sentPointCount, sentPointCount + MAX_DELTA_POINTS);
+    void annotations.publishStrokeDelta(
+      boardId,
+      currentStrokeId,
+      colorIndex,
+      size,
+      sentPointCount,
+      batch
+    );
+    sentPointCount += batch.length;
+  }
+
   function renderFrame(): void {
     rafId = null;
     if (!committedContext || !liveContext) return;
     const content = contentRect(elementWidth, elementHeight, intrinsicWidth, intrinsicHeight);
 
+    // Publish this frame's batch of new local points while a stroke is active.
+    flushStrokeDelta();
+
+    if (annotations && annotations.revision !== renderedRevision) {
+      renderedRevision = annotations.revision;
+      committedDirty = true;
+    }
+
     if (committedDirty) {
       committedContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       committedContext.clearRect(0, 0, elementWidth, elementHeight);
       if (content.width > 0) {
-        for (const stroke of committed) renderStroke(committedContext, stroke, content);
+        for (const stroke of committedStrokes()) renderStroke(committedContext, stroke, content);
       }
       committedDirty = false;
     }
 
     liveContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     liveContext.clearRect(0, 0, elementWidth, elementHeight);
-    if (content.width > 0 && currentPoints && currentPoints.length > 0) {
-      renderStroke(liveContext, { color, size, points: currentPoints }, content);
+    if (content.width > 0) {
+      for (const stroke of pendingRemoteStrokes()) renderStroke(liveContext, stroke, content);
+      if (currentPoints && currentPoints.length > 0) {
+        renderStroke(
+          liveContext,
+          { color: colorForIndex(colorIndex), size, points: currentPoints },
+          content
+        );
+      }
     }
   }
 
@@ -115,6 +172,7 @@ mirrors strokes to other participants is wired separately.
 
     measure();
     committedDirty = true;
+    renderedRevision = -1;
     scheduleFrame();
 
     const onGeometryChange = () => {
@@ -131,8 +189,12 @@ mirrors strokes to other participants is wired separately.
     video?.addEventListener('resize', onGeometryChange);
     video?.addEventListener('loadedmetadata', onGeometryChange);
 
+    // Repaint when remote annotation state changes (event-driven, no idle loop).
+    const unsubscribe = annotations?.subscribe(scheduleFrame);
+
     return () => {
       observer.disconnect();
+      unsubscribe?.();
       video?.removeEventListener('resize', onGeometryChange);
       video?.removeEventListener('loadedmetadata', onGeometryChange);
       if (rafId !== null) cancelAnimationFrame(rafId);
@@ -158,6 +220,8 @@ mirrors strokes to other participants is wired separately.
     event.stopPropagation();
     activePointerId = event.pointerId;
     currentPoints = [point];
+    currentStrokeId = annotations?.nextStrokeId() ?? 0;
+    sentPointCount = 0;
     try {
       liveCanvas?.setPointerCapture(event.pointerId);
     } catch {
@@ -182,8 +246,10 @@ mirrors strokes to other participants is wired separately.
     if (activePointerId !== event.pointerId) return;
 
     const points = currentPoints;
+    const strokeId = currentStrokeId;
     activePointerId = null;
     currentPoints = null;
+    sentPointCount = 0;
     try {
       liveCanvas?.releasePointerCapture(event.pointerId);
     } catch {
@@ -191,9 +257,15 @@ mirrors strokes to other participants is wired separately.
     }
 
     if (points && points.length > 0) {
-      committed.push({ color, size, points });
-      committedDirty = true;
-      oncommit?.({ tool, color, size, points });
+      if (annotations && boardId) {
+        // The controller records the stroke locally (bumping its revision) and
+        // publishes the authoritative commit to the call.
+        void annotations.publishStrokeCommit(boardId, strokeId, colorIndex, size, points);
+      } else {
+        localCommitted.push({ color: colorForIndex(colorIndex), size, points });
+        committedDirty = true;
+      }
+      oncommit?.({ tool, color: colorForIndex(colorIndex), size, points });
     }
     scheduleFrame();
   }

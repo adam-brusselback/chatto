@@ -129,4 +129,28 @@ describe('CallAnnotations', () => {
     await bob.handleData(new Uint8Array([1, 2, 3, 4, 5]), 'alice', ANNOTATION_TOPIC_RELIABLE);
     expect(bob.committedStrokes(BOARD)).toHaveLength(0);
   });
+
+  it('allocates unique stroke ids per controller', async () => {
+    const { alice } = await makeParticipants();
+    const first = alice.nextStrokeId();
+    const second = alice.nextStrokeId();
+    expect(second).not.toBe(first);
+  });
+
+  it('notifies subscribers on inbound changes until unsubscribed', async () => {
+    const { alice, bob, sent } = await makeParticipants();
+    let notified = 0;
+    const unsubscribe = bob.subscribe(() => {
+      notified += 1;
+    });
+
+    await alice.publishStrokeCommit(BOARD, 1, 0, 4, POINTS);
+    await bob.handleData(sent[0].data, 'alice', ANNOTATION_TOPIC_RELIABLE);
+    expect(notified).toBe(1);
+
+    unsubscribe();
+    await alice.publishStrokeCommit(BOARD, 2, 0, 4, POINTS);
+    await bob.handleData(sent[1].data, 'alice', ANNOTATION_TOPIC_RELIABLE);
+    expect(notified).toBe(1);
+  });
 });
