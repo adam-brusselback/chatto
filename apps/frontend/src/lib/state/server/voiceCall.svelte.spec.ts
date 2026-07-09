@@ -25,6 +25,16 @@ import {
   VoiceCallState
 } from './voiceCall.svelte';
 import { Room } from 'livekit-client';
+import { deriveAnnotationKey, seal } from '$lib/components/voice/annotation/annotationCrypto';
+import {
+  ANNOTATION_TOPIC_RELIABLE,
+  AnnotationFrameType,
+  encodeAnnotationFrame
+} from '$lib/components/voice/annotation/annotationCodec';
+
+// Real Web Crypto captured before beforeEach stubs `crypto`, so the annotation
+// data-channel test can derive keys and seal payloads.
+const realCrypto = globalThis.crypto;
 
 const calls: string[] = [];
 let lastRoomOptions: Record<string, unknown> | null = null;
@@ -131,7 +141,8 @@ vi.mock('livekit-client', () => {
       connectionQuality: 'excellent',
       isSpeaking: false,
       audioLevel: 0,
-      getTrackPublications: vi.fn(() => localTrackPublications)
+      getTrackPublications: vi.fn(() => localTrackPublications),
+      publishData: vi.fn(async () => {})
     };
     remoteParticipants = mockRemoteParticipants;
 
@@ -186,7 +197,8 @@ vi.mock('livekit-client', () => {
       TrackPublished: 'TrackPublished',
       TrackUnpublished: 'TrackUnpublished',
       LocalTrackPublished: 'LocalTrackPublished',
-      LocalTrackUnpublished: 'LocalTrackUnpublished'
+      LocalTrackUnpublished: 'LocalTrackUnpublished',
+      DataReceived: 'DataReceived'
     },
     Track: {
       Kind: { Audio: 'audio' },
@@ -282,6 +294,41 @@ describe('VoiceCallState', () => {
       calls.indexOf('setE2EEEnabled:true')
     );
     expect(calls.indexOf('setE2EEEnabled:true')).toBeLessThan(calls.indexOf('connect'));
+  });
+
+  it('decrypts and routes annotation data to the annotation controller', async () => {
+    vi.stubGlobal('crypto', realCrypto);
+    const client = createVoiceCallClient();
+    const state = new VoiceCallState(client);
+    await state.join('wss://livekit.example.test', 'R1');
+    expect(state.annotations).not.toBeNull();
+
+    const key = await deriveAnnotationKey('shared-e2ee-key');
+    const sealed = await seal(
+      key,
+      encodeAnnotationFrame({
+        type: AnnotationFrameType.StrokeCommit,
+        boardId: 'sharer-1',
+        strokeId: 1,
+        color: 0,
+        size: 4,
+        points: [
+          { x: 0.2, y: 0.3 },
+          { x: 0.4, y: 0.5 }
+        ]
+      })
+    );
+
+    roomEventHandlers.get('DataReceived')?.(
+      sealed,
+      { identity: 'sharer-1' },
+      undefined,
+      ANNOTATION_TOPIC_RELIABLE
+    );
+
+    await vi.waitFor(() => {
+      expect(state.annotations?.committedStrokes('sharer-1')).toHaveLength(1);
+    });
   });
 
   it('does not play a join sound without the participant join event', async () => {

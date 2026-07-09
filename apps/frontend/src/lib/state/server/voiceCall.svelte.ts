@@ -22,6 +22,8 @@ import { toast } from '$lib/ui/toast';
 import { playCallSound } from '$lib/audio/callSounds';
 import * as m from '$lib/i18n/messages';
 import type { VoiceCallAPI } from '$lib/api-client/voiceCalls';
+import { deriveAnnotationKey } from '$lib/components/voice/annotation/annotationCrypto';
+import { CallAnnotations } from '$lib/components/voice/annotation/callAnnotations';
 
 export type CallParticipantInfo = {
   identity: string;
@@ -177,6 +179,14 @@ export class VoiceCallState {
   isScreenShareEnabled = $state(false);
   // True while LiveKit is applying local screen-share enable/disable changes.
   isScreenSharePending = $state(false);
+
+  /**
+   * Ephemeral screen-share annotation controller for the active call, or null
+   * when not in a call. The reference is reactive (set on join, cleared on
+   * leave); the controller's own stroke state is non-reactive and read
+   * imperatively by the annotation overlay.
+   */
+  annotations = $state<CallAnnotations | null>(null);
 
   // Participants (including local)
   participants = $state<CallParticipantInfo[]>([]);
@@ -427,6 +437,23 @@ export class VoiceCallState {
       await this.refreshDevices();
       if (this.consumePendingOwnJoinSound()) {
         void playCallSound('join');
+      }
+
+      // Set up ephemeral screen-share annotation transport over LiveKit data
+      // channels. Non-essential: a key-derivation failure must never block the
+      // call, so it is swallowed and annotation simply stays disabled.
+      try {
+        const annotationKey = await deriveAnnotationKey(e2eeKey);
+        this.annotations = new CallAnnotations(
+          annotationKey,
+          this.room.localParticipant.identity,
+          (data, reliable, topic) => {
+            void this.room?.localParticipant.publishData(data, { reliable, topic });
+          }
+        );
+      } catch (error) {
+        console.error('Failed to set up call annotations:', error);
+        this.annotations = null;
       }
     } catch (err) {
       console.error('Failed to join voice call:', summarizeJoinError(err));
@@ -817,6 +844,12 @@ export class VoiceCallState {
       this.updateParticipants();
     });
 
+    // Route encrypted annotation frames (screen-share drawing) to the annotation
+    // controller, which decrypts, decodes, and applies them.
+    this.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+      void this.annotations?.handleData(payload, participant?.identity ?? '', topic);
+    });
+
     // Keep audio level snapshots fresh for call UI consumers without pushing
     // 60Hz updates through Svelte's reactive graph.
     this.audioLevelInterval = setInterval(() => {
@@ -979,6 +1012,8 @@ export class VoiceCallState {
     }
     this.e2eeWorker?.terminate();
     this.e2eeWorker = null;
+    this.annotations?.clear();
+    this.annotations = null;
     if (wasConnected && disconnectedRoomId && disconnectedCallId) {
       this.recentlyDisconnectedCall = {
         roomId: disconnectedRoomId,
