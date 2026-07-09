@@ -19,12 +19,14 @@ resolution to request for sidebar-width tiles.
 - `showIdentityOverlay` - Whether to show the avatar overlay
 - `fit` - How the video track should fit the tile. Camera thumbnails default to `cover`; screen shares should use `contain` to avoid cropping shared content.
 - `fill` - Whether the video should fill its parent's height instead of using thumbnail aspect-ratio sizing.
+- `annotate` - Whether to overlay an interactive drawing surface (screen shares only).
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import type { Track } from 'livekit-client';
 	import type { PresenceStatus } from '$lib/render/types';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
+	import AnnotationOverlay from './annotation/AnnotationOverlay.svelte';
 
 	let {
 		track,
@@ -32,7 +34,8 @@ resolution to request for sidebar-width tiles.
 		user,
 		showIdentityOverlay = true,
 		fit = 'cover',
-		fill = false
+		fill = false,
+		annotate = false
 	}: {
 		track: Track;
 		name: string;
@@ -46,6 +49,7 @@ resolution to request for sidebar-width tiles.
 		showIdentityOverlay?: boolean;
 		fit?: 'cover' | 'contain';
 		fill?: boolean;
+		annotate?: boolean;
 	} = $props();
 
 	let videoEl = $state<HTMLVideoElement | null>(null);
@@ -106,5 +110,8 @@ resolution to request for sidebar-width tiles.
 		>
 			<UserAvatar {user} size="xs" />
 		</div>
+	{/if}
+	{#if annotate}
+		<AnnotationOverlay {videoEl} />
 	{/if}
 </div>

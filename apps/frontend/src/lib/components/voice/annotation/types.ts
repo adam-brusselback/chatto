@@ -17,6 +17,18 @@ export interface NormalizedPoint {
 export type AnnotationTool = 'pen' | 'laser';
 
 /**
+ * A finished stroke emitted when the pointer lifts. This is the seam the live
+ * overlay hands to the transport layer (which publishes it to other
+ * participants) and to local commit storage.
+ */
+export interface AnnotationCommit {
+  tool: AnnotationTool;
+  color: string;
+  size: number;
+  points: NormalizedPoint[];
+}
+
+/**
  * A committed freehand stroke on a board (one participant's shared screen).
  *
  * Coordinates are normalized so a stroke lands on the same shared-content pixel

@@ -93,6 +93,7 @@
     "js-sha256": "^0.11.1",
     "linkify-it": "^5.0.0",
     "livekit-client": "^2.18.10",
+    "perfect-freehand": "^1.2.3",
     "tlds": "^1.261.0",
     "vidstack": "^1.12.13"
   }
