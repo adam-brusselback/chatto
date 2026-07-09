@@ -137,6 +137,64 @@ describe('CallAnnotations', () => {
     expect(second).not.toBe(first);
   });
 
+  it('routes laser positions with sender color and age', async () => {
+    const { alice, bob, sent } = await makeParticipants();
+    await alice.publishLaser(BOARD, 0.25, 0.75, 5, true);
+    expect(sent[0].reliable).toBe(false);
+    expect(sent[0].topic).toBe(ANNOTATION_TOPIC_LOSSY);
+
+    await bob.handleData(sent[0].data, 'alice', ANNOTATION_TOPIC_LOSSY);
+    const lasers = bob.lasers(BOARD);
+    expect(lasers).toHaveLength(1);
+    expect(lasers[0].sender).toBe('alice');
+    expect(lasers[0].colorIndex).toBe(5);
+    expect(lasers[0].active).toBe(true);
+    expect(lasers[0].x).toBeCloseTo(0.25, 3);
+    expect(lasers[0].ageMs).toBeGreaterThanOrEqual(0);
+
+    await alice.publishLaser(BOARD, 0.5, 0.5, 5, false);
+    await bob.handleData(sent[1].data, 'alice', ANNOTATION_TOPIC_LOSSY);
+    expect(bob.lasers(BOARD)[0].active).toBe(false);
+  });
+
+  it('applies draw-together control frames and reports them via onControlChange', async () => {
+    const { alice, bob, sent } = await makeParticipants();
+    const seen: Array<{ boardId: string; enabled: boolean }> = [];
+    bob.onControlChange = (boardId, enabled) => seen.push({ boardId, enabled });
+
+    expect(bob.isDrawTogetherEnabled(BOARD)).toBe(true);
+    await alice.setLocalDrawTogether(BOARD, false);
+    expect(alice.isDrawTogetherEnabled(BOARD)).toBe(false);
+    expect(sent[0].reliable).toBe(true);
+
+    await bob.handleData(sent[0].data, 'alice', ANNOTATION_TOPIC_RELIABLE);
+    expect(bob.isDrawTogetherEnabled(BOARD)).toBe(false);
+    expect(seen).toEqual([{ boardId: BOARD, enabled: false }]);
+  });
+
+  it('rebroadcasts a set draw-together flag but not the default', async () => {
+    const { alice, sent } = await makeParticipants();
+    await alice.rebroadcastDrawTogether(BOARD);
+    expect(sent).toHaveLength(0);
+
+    await alice.setLocalDrawTogether(BOARD, false);
+    await alice.rebroadcastDrawTogether(BOARD);
+    expect(sent).toHaveLength(2);
+  });
+
+  it('drops a board without publishing', async () => {
+    const { alice, bob, sent } = await makeParticipants();
+    await alice.publishStrokeCommit(BOARD, 1, 0, 4, POINTS);
+    await bob.handleData(sent[0].data, 'alice', ANNOTATION_TOPIC_RELIABLE);
+    expect(bob.committedStrokes(BOARD)).toHaveLength(1);
+
+    const sentBefore = sent.length;
+    bob.dropBoard(BOARD);
+    expect(bob.committedStrokes(BOARD)).toHaveLength(0);
+    expect(bob.lasers(BOARD)).toHaveLength(0);
+    expect(sent).toHaveLength(sentBefore);
+  });
+
   it('notifies subscribers on inbound changes until unsubscribed', async () => {
     const { alice, bob, sent } = await makeParticipants();
     let notified = 0;

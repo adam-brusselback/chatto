@@ -54,6 +54,15 @@
     "screen_share_failed": "Could not start screen sharing.",
     "speaker_switch_failed": "Could not switch speakers. This browser or device may not support speaker selection.",
     "device_switch_failed": "Could not switch to that device.",
-    "media_device_failed": "Could not access a media device."
+    "media_device_failed": "Could not access a media device.",
+    "annotate": "Draw on screen",
+    "stop_annotate": "Stop drawing",
+    "annotation_pen": "Pen",
+    "annotation_laser": "Laser pointer",
+    "annotation_color": "Drawing color",
+    "annotation_color_option": "Color {number}",
+    "clear_my_annotations": "Clear my drawings",
+    "clear_all_annotations": "Clear all drawings",
+    "draw_together": "Let others draw"
   }
 }

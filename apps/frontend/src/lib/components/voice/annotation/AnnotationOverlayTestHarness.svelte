@@ -1,17 +1,19 @@
 <script lang="ts">
   import AnnotationOverlay from './AnnotationOverlay.svelte';
   import type { CallAnnotations } from './callAnnotations';
-  import type { AnnotationCommit } from './types';
+  import type { AnnotationCommit, AnnotationTool } from './types';
 
   let {
     canDraw = true,
     annotations = null,
     boardId = '',
+    tool = 'pen',
     oncommit
   }: {
     canDraw?: boolean;
     annotations?: CallAnnotations | null;
     boardId?: string;
+    tool?: AnnotationTool;
     oncommit?: (stroke: AnnotationCommit) => void;
   } = $props();
 
@@ -26,5 +28,5 @@
 </script>
 
 <div style="position: relative; width: 800px; height: 600px;">
-  <AnnotationOverlay {videoEl} {canDraw} {annotations} {boardId} {oncommit} />
+  <AnnotationOverlay {videoEl} {canDraw} {annotations} {boardId} {tool} {oncommit} />
 </div>

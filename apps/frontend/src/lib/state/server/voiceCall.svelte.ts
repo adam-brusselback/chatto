@@ -24,6 +24,9 @@ import * as m from '$lib/i18n/messages';
 import type { VoiceCallAPI } from '$lib/api-client/voiceCalls';
 import { deriveAnnotationKey } from '$lib/components/voice/annotation/annotationCrypto';
 import { CallAnnotations } from '$lib/components/voice/annotation/callAnnotations';
+import { ClearScope } from '$lib/components/voice/annotation/annotationCodec';
+import { DEFAULT_COLOR_INDEX } from '$lib/components/voice/annotation/palette';
+import type { AnnotationTool } from '$lib/components/voice/annotation/types';
 
 export type CallParticipantInfo = {
   identity: string;
@@ -194,6 +197,25 @@ export class VoiceCallState {
    * through to the tile beneath).
    */
   isAnnotating = $state(false);
+
+  /** This viewer's active annotation tool. */
+  annotationTool = $state<AnnotationTool>('pen');
+
+  /** This viewer's annotation palette index (see palette.ts). */
+  annotationColorIndex = $state(DEFAULT_COLOR_INDEX);
+
+  /**
+   * The local sharer's "draw together" kill-switch for their own screen share.
+   * True (the default) lets other participants draw on the shared screen.
+   */
+  drawTogetherEnabled = $state(true);
+
+  /**
+   * Reactive mirror of remote sharers' "draw together" flags, keyed by the
+   * sharer's identity (the board id). Boards absent from the map default to
+   * enabled. Fed by the annotation controller's control-change callback.
+   */
+  remoteDrawTogether = $state<Record<string, boolean>>({});
 
   // Participants (including local)
   participants = $state<CallParticipantInfo[]>([]);
@@ -458,6 +480,9 @@ export class VoiceCallState {
             void this.room?.localParticipant.publishData(data, { reliable, topic });
           }
         );
+        this.annotations.onControlChange = (boardId, enabled) => {
+          this.remoteDrawTogether = { ...this.remoteDrawTogether, [boardId]: enabled };
+        };
       } catch (error) {
         console.error('Failed to set up call annotations:', error);
         this.annotations = null;
@@ -776,11 +801,52 @@ export class VoiceCallState {
     this.isAnnotating = !this.isAnnotating;
   }
 
+  /** Select this viewer's annotation tool. */
+  setAnnotationTool(tool: AnnotationTool): void {
+    this.annotationTool = tool;
+  }
+
+  /** Select this viewer's annotation color (palette index). */
+  setAnnotationColorIndex(index: number): void {
+    this.annotationColorIndex = index;
+  }
+
+  /**
+   * Flip the local sharer's "draw together" switch and announce it to the call.
+   * Enforcement is cooperative, like local mute: well-behaved clients disable
+   * their drawing surface when the sharer turns this off.
+   */
+  toggleDrawTogether(): void {
+    const identity = this.room?.localParticipant.identity;
+    if (!identity || !this.annotations) return;
+    this.drawTogetherEnabled = !this.drawTogetherEnabled;
+    void this.annotations.setLocalDrawTogether(identity, this.drawTogetherEnabled);
+  }
+
+  /**
+   * Clear annotations on a board: the whole board when it is this viewer's own
+   * shared screen, otherwise only this viewer's strokes.
+   */
+  clearAnnotations(boardId: string): void {
+    if (!this.annotations) return;
+    const identity = this.room?.localParticipant.identity;
+    const scope = boardId === identity ? ClearScope.Board : ClearScope.Own;
+    void this.annotations.publishClear(boardId, scope);
+  }
+
+  /** Re-announce a disabled draw-together flag so late joiners learn it. */
+  private rebroadcastDrawTogether(): void {
+    if (this.drawTogetherEnabled || !this.isScreenShareEnabled) return;
+    const identity = this.room?.localParticipant.identity;
+    if (identity) void this.annotations?.rebroadcastDrawTogether(identity);
+  }
+
   private setupRoomEventListeners(): void {
     if (!this.room) return;
 
     this.room.on(RoomEvent.ParticipantConnected, () => {
       this.updateParticipants();
+      this.rebroadcastDrawTogether();
     });
 
     this.room.on(RoomEvent.ParticipantDisconnected, () => {
@@ -844,7 +910,12 @@ export class VoiceCallState {
       this.updateParticipants();
     });
 
-    this.room.on(RoomEvent.TrackUnpublished, () => {
+    // Annotations are ephemeral per share session: drop a board's strokes when
+    // its screen-share track goes away so a re-share starts clean.
+    this.room.on(RoomEvent.TrackUnpublished, (publication, participant) => {
+      if (publication?.source === Track.Source.ScreenShare && participant?.identity) {
+        this.annotations?.dropBoard(participant.identity);
+      }
       this.updateParticipants();
     });
 
@@ -852,7 +923,12 @@ export class VoiceCallState {
       this.updateParticipants();
     });
 
-    this.room.on(RoomEvent.LocalTrackUnpublished, () => {
+    this.room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+      if (publication?.source === Track.Source.ScreenShare) {
+        const identity = this.room?.localParticipant.identity;
+        if (identity) this.annotations?.dropBoard(identity);
+        this.drawTogetherEnabled = true;
+      }
       this.updateParticipants();
     });
 
@@ -1027,6 +1103,10 @@ export class VoiceCallState {
     this.annotations?.clear();
     this.annotations = null;
     this.isAnnotating = false;
+    this.annotationTool = 'pen';
+    this.annotationColorIndex = DEFAULT_COLOR_INDEX;
+    this.drawTogetherEnabled = true;
+    this.remoteDrawTogether = {};
     if (wasConnected && disconnectedRoomId && disconnectedCallId) {
       this.recentlyDisconnectedCall = {
         roomId: disconnectedRoomId,

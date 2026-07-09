@@ -194,4 +194,41 @@ describe('AnnotationOverlay two-participant sync', () => {
       expect(bob.pendingStrokes(BOARD)).toHaveLength(0);
     });
   });
+
+  it('shows the laser pointer of one participant on the other participant’s canvas', async () => {
+    const { alice, bob } = await makeLinkedControllers();
+
+    const drawer = render(AnnotationOverlayTestHarness, {
+      canDraw: true,
+      annotations: alice,
+      boardId: BOARD,
+      tool: 'laser'
+    });
+    const viewer = render(AnnotationOverlayTestHarness, {
+      canDraw: false,
+      annotations: bob,
+      boardId: BOARD
+    });
+
+    const drawerLive = drawer.container.querySelectorAll('canvas')[1];
+    const rect = drawerLive.getBoundingClientRect();
+    drawerLive.dispatchEvent(pointer('pointerdown', rect.left + 400, rect.top + 300));
+    drawerLive.dispatchEvent(pointer('pointermove', rect.left + 420, rect.top + 310));
+
+    // The laser position crosses the loopback and Bob's controller tracks it…
+    await vi.waitFor(() => {
+      const lasers = bob.lasers(BOARD);
+      expect(lasers).toHaveLength(1);
+      expect(lasers[0].active).toBe(true);
+    });
+    // …no stroke is created…
+    expect(bob.pendingStrokes(BOARD)).toHaveLength(0);
+    expect(bob.committedStrokes(BOARD)).toHaveLength(0);
+
+    // …and Bob's live canvas paints the dot.
+    const viewerLive = viewer.container.querySelectorAll('canvas')[1];
+    await vi.waitFor(() => {
+      expect(hasPaintedPixels(viewerLive)).toBe(true);
+    });
+  });
 });

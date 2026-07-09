@@ -23,7 +23,7 @@ stroke lands on the same shared-content pixel for every viewer.
 -->
 <script lang="ts">
   import type { CallAnnotations } from './callAnnotations';
-  import { clampToUnit, contentRect, isInsideUnit, toNormalized } from './coords';
+  import { clampToUnit, contentRect, fromNormalized, isInsideUnit, toNormalized } from './coords';
   import { colorForIndex, DEFAULT_BRUSH_SIZE, DEFAULT_COLOR_INDEX } from './palette';
   import { renderStroke, type RenderableStroke } from './renderStrokes';
   import type { AnnotationCommit, AnnotationTool, NormalizedPoint } from './types';
@@ -31,6 +31,9 @@ stroke lands on the same shared-content pixel for every viewer.
   // Largest point batch for one lossy delta frame; keeps the sealed datagram
   // comfortably under the ~1300 byte MTU budget (4 bytes per point + header).
   const MAX_DELTA_POINTS = 120;
+
+  // How long a laser dot keeps glowing after its last update before fading out.
+  const LASER_FADE_MS = 900;
 
   let {
     videoEl,
@@ -76,6 +79,10 @@ stroke lands on the same shared-content pixel for every viewer.
   let committedDirty = false;
   let renderedRevision = -1;
   let rafId: number | null = null;
+  // Laser pointer: the local dot being shown, and the latest not-yet-published
+  // position (flushed once per frame; only the newest position matters).
+  let localLaser: { x: number; y: number; active: boolean; updatedAt: number } | null = null;
+  let pendingLaser: { x: number; y: number; active: boolean } | null = null;
 
   // Cached geometry (CSS pixels + intrinsic source size), refreshed on resize.
   let elementWidth = 0;
@@ -130,13 +137,51 @@ stroke lands on the same shared-content pixel for every viewer.
     sentPointCount += batch.length;
   }
 
+  function flushLaser(): void {
+    if (!annotations || !boardId || !pendingLaser) return;
+    void annotations.publishLaser(
+      boardId,
+      pendingLaser.x,
+      pendingLaser.y,
+      colorIndex,
+      pendingLaser.active
+    );
+    pendingLaser = null;
+  }
+
+  function laserAlpha(active: boolean, ageMs: number): number {
+    if (active) return 1;
+    return Math.max(0, 1 - ageMs / LASER_FADE_MS);
+  }
+
+  function drawLaserDot(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    color: string,
+    alpha: number
+  ): void {
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function renderFrame(): void {
     rafId = null;
     if (!committedContext || !liveContext) return;
     const content = contentRect(elementWidth, elementHeight, intrinsicWidth, intrinsicHeight);
 
-    // Publish this frame's batch of new local points while a stroke is active.
+    // Publish this frame's batch of local input (stroke points, laser position).
     flushStrokeDelta();
+    flushLaser();
 
     if (annotations && annotations.revision !== renderedRevision) {
       renderedRevision = annotations.revision;
@@ -154,6 +199,7 @@ stroke lands on the same shared-content pixel for every viewer.
 
     liveContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     liveContext.clearRect(0, 0, elementWidth, elementHeight);
+    let lasersVisible = false;
     if (content.width > 0) {
       for (const stroke of pendingRemoteStrokes()) renderStroke(liveContext, stroke, content);
       if (currentPoints && currentPoints.length > 0) {
@@ -163,7 +209,32 @@ stroke lands on the same shared-content pixel for every viewer.
           content
         );
       }
+
+      // Laser dots: remote pointers from the controller plus the local echo,
+      // fading out after their last update.
+      if (annotations && boardId) {
+        for (const laser of annotations.lasers(boardId)) {
+          const alpha = laserAlpha(laser.active, laser.ageMs);
+          if (alpha <= 0) continue;
+          lasersVisible = true;
+          const at = fromNormalized({ x: laser.x, y: laser.y }, content);
+          drawLaserDot(liveContext, at.x, at.y, colorForIndex(laser.colorIndex), alpha);
+        }
+      }
+      if (localLaser) {
+        const alpha = laserAlpha(localLaser.active, Date.now() - localLaser.updatedAt);
+        if (alpha > 0) {
+          lasersVisible = true;
+          const at = fromNormalized(localLaser, content);
+          drawLaserDot(liveContext, at.x, at.y, colorForIndex(colorIndex), alpha);
+        } else if (!localLaser.active) {
+          localLaser = null;
+        }
+      }
     }
+
+    // Keep animating while any laser dot is visible so fade-outs complete.
+    if (lasersVisible) scheduleFrame();
   }
 
   function setup(root: HTMLElement) {
@@ -219,9 +290,14 @@ stroke lands on the same shared-content pixel for every viewer.
     event.preventDefault();
     event.stopPropagation();
     activePointerId = event.pointerId;
-    currentPoints = [point];
-    currentStrokeId = annotations?.nextStrokeId() ?? 0;
-    sentPointCount = 0;
+    if (tool === 'laser') {
+      localLaser = { ...point, active: true, updatedAt: Date.now() };
+      pendingLaser = { ...point, active: true };
+    } else {
+      currentPoints = [point];
+      currentStrokeId = annotations?.nextStrokeId() ?? 0;
+      sentPointCount = 0;
+    }
     try {
       liveCanvas?.setPointerCapture(event.pointerId);
     } catch {
@@ -231,8 +307,21 @@ stroke lands on the same shared-content pixel for every viewer.
   }
 
   function handlePointerMove(event: PointerEvent): void {
-    if (activePointerId !== event.pointerId || !currentPoints) return;
+    if (activePointerId !== event.pointerId) return;
 
+    if (localLaser?.active) {
+      // Only the newest laser position matters; no need for coalesced samples.
+      const point = pointerToNormalized(event);
+      if (point) {
+        const clamped = clampToUnit(point);
+        localLaser = { ...clamped, active: true, updatedAt: Date.now() };
+        pendingLaser = { ...clamped, active: true };
+      }
+      scheduleFrame();
+      return;
+    }
+
+    if (!currentPoints) return;
     const coalesced =
       typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
     for (const sample of coalesced.length > 0 ? coalesced : [event]) {
@@ -254,6 +343,11 @@ stroke lands on the same shared-content pixel for every viewer.
       liveCanvas?.releasePointerCapture(event.pointerId);
     } catch {
       // releasePointerCapture can throw if capture was never established.
+    }
+
+    if (localLaser?.active) {
+      localLaser = { ...localLaser, active: false, updatedAt: Date.now() };
+      pendingLaser = { x: localLaser.x, y: localLaser.y, active: false };
     }
 
     if (points && points.length > 0) {

@@ -59,8 +59,8 @@ const sampleFrames: AnnotationFrame[] = [
   },
   { type: AnnotationFrameType.Clear, boardId: 'user_ABC', scope: ClearScope.Board },
   { type: AnnotationFrameType.Clear, boardId: 'user_ABC', scope: ClearScope.Own },
-  { type: AnnotationFrameType.Laser, boardId: 'user_ABC', x: 0.25, y: 0.9, active: true },
-  { type: AnnotationFrameType.Laser, boardId: 'user_ABC', x: 0.4, y: 0.1, active: false },
+  { type: AnnotationFrameType.Laser, boardId: 'user_ABC', x: 0.25, y: 0.9, color: 2, active: true },
+  { type: AnnotationFrameType.Laser, boardId: 'user_ABC', x: 0.4, y: 0.1, color: 7, active: false },
   { type: AnnotationFrameType.Control, boardId: 'user_ABC', drawTogetherEnabled: false },
   { type: AnnotationFrameType.Control, boardId: 'user_ABC', drawTogetherEnabled: true },
   { type: AnnotationFrameType.Hello, boardId: 'user_ABC' },
@@ -184,6 +184,7 @@ describe('decode robustness', () => {
       boardId: 'board',
       x: 0.5,
       y: 0.5,
+      color: 1,
       active: true
     };
     const bytes = encodeAnnotationFrame(frame);

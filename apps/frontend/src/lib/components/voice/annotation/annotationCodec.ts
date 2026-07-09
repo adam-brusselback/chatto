@@ -88,6 +88,8 @@ export interface LaserFrame {
   boardId: string;
   x: number;
   y: number;
+  /** Palette index the sender points with. */
+  color: number;
   active: boolean;
 }
 
@@ -155,6 +157,7 @@ export function encodeAnnotationFrame(frame: AnnotationFrame): Uint8Array {
       writer.string(frame.boardId);
       writer.u16(quantizeUnit(frame.x));
       writer.u16(quantizeUnit(frame.y));
+      writer.u8(frame.color);
       writer.u8(frame.active ? 1 : 0);
       break;
     case AnnotationFrameType.Control:
@@ -216,6 +219,7 @@ export function decodeAnnotationFrame(bytes: Uint8Array): AnnotationFrame | null
           boardId: reader.string(),
           x: dequantizeUnit(reader.u16()),
           y: dequantizeUnit(reader.u16()),
+          color: reader.u8(),
           active: reader.u8() !== 0
         };
       case AnnotationFrameType.Control:

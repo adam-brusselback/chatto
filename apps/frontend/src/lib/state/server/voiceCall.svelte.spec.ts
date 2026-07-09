@@ -331,6 +331,35 @@ describe('VoiceCallState', () => {
     });
   });
 
+  it('mirrors remote draw-together control frames into reactive state', async () => {
+    vi.stubGlobal('crypto', realCrypto);
+    const client = createVoiceCallClient();
+    const state = new VoiceCallState(client);
+    await state.join('wss://livekit.example.test', 'R1');
+
+    const key = await deriveAnnotationKey('shared-e2ee-key');
+    const sealed = await seal(
+      key,
+      encodeAnnotationFrame({
+        type: AnnotationFrameType.Control,
+        boardId: 'sharer-1',
+        drawTogetherEnabled: false
+      })
+    );
+
+    expect(state.remoteDrawTogether['sharer-1']).toBeUndefined();
+    roomEventHandlers.get('DataReceived')?.(
+      sealed,
+      { identity: 'sharer-1' },
+      undefined,
+      ANNOTATION_TOPIC_RELIABLE
+    );
+
+    await vi.waitFor(() => {
+      expect(state.remoteDrawTogether['sharer-1']).toBe(false);
+    });
+  });
+
   it('does not play a join sound without the participant join event', async () => {
     const client = createVoiceCallClient();
     const state = new VoiceCallState(client);

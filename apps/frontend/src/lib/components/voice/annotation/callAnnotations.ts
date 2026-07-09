@@ -40,6 +40,26 @@ interface BoardStroke {
   committed: boolean;
 }
 
+/** Latest laser-pointer position for one sender on one board. */
+export interface LaserPointerState {
+  sender: string;
+  x: number;
+  y: number;
+  colorIndex: number;
+  /** False once the sender lifted the pointer; clients fade the dot out. */
+  active: boolean;
+  /** Milliseconds since the last update, for fade-out rendering. */
+  ageMs: number;
+}
+
+interface LaserRecord {
+  x: number;
+  y: number;
+  colorIndex: number;
+  active: boolean;
+  updatedAt: number;
+}
+
 export class CallAnnotations {
   readonly #key: CryptoKey;
   readonly #localIdentity: string;
@@ -47,9 +67,20 @@ export class CallAnnotations {
 
   // boardId -> `${author}:${strokeId}` -> stroke. Deliberately non-reactive.
   readonly #boards = new Map<string, Map<string, BoardStroke>>();
+  // boardId -> sender identity -> latest laser position.
+  readonly #lasers = new Map<string, Map<string, LaserRecord>>();
+  // boardId -> sharer's "draw together" flag. Absent means enabled (default).
+  readonly #drawTogether = new Map<string, boolean>();
   #revision = 0;
   #nextStrokeId = 1;
   readonly #listeners = new Set<() => void>();
+
+  /**
+   * Invoked when a remote sharer changes their board's "draw together" flag.
+   * The voice-call store mirrors this into reactive state so templates can gate
+   * drawing affordances; stroke/laser state itself stays non-reactive.
+   */
+  onControlChange: ((boardId: string, drawTogetherEnabled: boolean) => void) | null = null;
 
   constructor(key: CryptoKey, localIdentity: string, publish: AnnotationPublish) {
     this.#key = key;
@@ -151,6 +182,84 @@ export class CallAnnotations {
     await this.#send({ type: AnnotationFrameType.Clear, boardId, scope }, true);
   }
 
+  /** Publish this participant's laser-pointer position (lossy, latest wins). */
+  async publishLaser(
+    boardId: string,
+    x: number,
+    y: number,
+    colorIndex: number,
+    active: boolean
+  ): Promise<void> {
+    await this.#send(
+      { type: AnnotationFrameType.Laser, boardId, x, y, color: colorIndex, active },
+      false
+    );
+  }
+
+  /** Latest remote laser pointers for a board, with age for fade-out. */
+  lasers(boardId: string): LaserPointerState[] {
+    const board = this.#lasers.get(boardId);
+    if (!board) return [];
+    const now = Date.now();
+    const result: LaserPointerState[] = [];
+    for (const [sender, laser] of board) {
+      result.push({
+        sender,
+        x: laser.x,
+        y: laser.y,
+        colorIndex: laser.colorIndex,
+        active: laser.active,
+        ageMs: now - laser.updatedAt
+      });
+    }
+    return result;
+  }
+
+  /** Whether the sharer of a board currently allows others to draw on it. */
+  isDrawTogetherEnabled(boardId: string): boolean {
+    return this.#drawTogether.get(boardId) ?? true;
+  }
+
+  /**
+   * Set the "draw together" flag for this participant's own board and announce
+   * it to the call (reliable).
+   */
+  async setLocalDrawTogether(boardId: string, enabled: boolean): Promise<void> {
+    this.#drawTogether.set(boardId, enabled);
+    this.#notify();
+    await this.#send(
+      { type: AnnotationFrameType.Control, boardId, drawTogetherEnabled: enabled },
+      true
+    );
+  }
+
+  /**
+   * Re-announce this participant's own board flag (e.g. when someone joins the
+   * call after the sharer disabled drawing; the default everywhere is enabled).
+   */
+  async rebroadcastDrawTogether(boardId: string): Promise<void> {
+    const enabled = this.#drawTogether.get(boardId);
+    if (enabled === undefined) return;
+    await this.#send(
+      { type: AnnotationFrameType.Control, boardId, drawTogetherEnabled: enabled },
+      true
+    );
+  }
+
+  /**
+   * Drop all local state for one board without publishing (used when a screen
+   * share ends; each client observes the track unpublish itself).
+   */
+  dropBoard(boardId: string): void {
+    const board = this.#boards.get(boardId);
+    const hadCommitted = board ? [...board.values()].some((stroke) => stroke.committed) : false;
+    this.#boards.delete(boardId);
+    this.#lasers.delete(boardId);
+    this.#drawTogether.delete(boardId);
+    if (hadCommitted) this.#revision += 1;
+    this.#notify();
+  }
+
   /** Decrypt, decode, and apply an inbound data-channel packet. */
   async handleData(
     payload: Uint8Array,
@@ -169,8 +278,12 @@ export class CallAnnotations {
 
   /** Drop all stroke state (call end). */
   clear(): void {
-    if (this.#boards.size === 0) return;
+    if (this.#boards.size === 0 && this.#lasers.size === 0 && this.#drawTogether.size === 0) {
+      return;
+    }
     this.#boards.clear();
+    this.#lasers.clear();
+    this.#drawTogether.clear();
     this.#revision += 1;
     this.#notify();
   }
@@ -204,8 +317,27 @@ export class CallAnnotations {
       case AnnotationFrameType.Clear:
         this.#applyClear(frame.boardId, frame.scope, sender);
         break;
+      case AnnotationFrameType.Laser: {
+        let board = this.#lasers.get(frame.boardId);
+        if (!board) {
+          board = new Map();
+          this.#lasers.set(frame.boardId, board);
+        }
+        board.set(sender, {
+          x: frame.x,
+          y: frame.y,
+          colorIndex: frame.color,
+          active: frame.active,
+          updatedAt: Date.now()
+        });
+        break;
+      }
+      case AnnotationFrameType.Control:
+        this.#drawTogether.set(frame.boardId, frame.drawTogetherEnabled);
+        this.onControlChange?.(frame.boardId, frame.drawTogetherEnabled);
+        break;
       default:
-        // Laser, Control, and Hello frames are handled in later milestones.
+        // Hello (late-joiner replay) is handled in a later milestone.
         break;
     }
   }

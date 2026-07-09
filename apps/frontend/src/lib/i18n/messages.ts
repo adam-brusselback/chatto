@@ -924,6 +924,17 @@ const msg_voice_screen_share_failed = (): LocalizedString => messages().voice_sc
 const msg_voice_speaker_switch_failed = (): LocalizedString => messages().voice_speaker_switch_failed(empty());
 const msg_voice_device_switch_failed = (): LocalizedString => messages().voice_device_switch_failed(empty());
 const msg_voice_media_device_failed = (): LocalizedString => messages().voice_media_device_failed(empty());
+const msg_voice_annotate = (): LocalizedString => messages().voice_annotate(empty());
+const msg_voice_stop_annotate = (): LocalizedString => messages().voice_stop_annotate(empty());
+const msg_voice_annotation_pen = (): LocalizedString => messages().voice_annotation_pen(empty());
+const msg_voice_annotation_laser = (): LocalizedString => messages().voice_annotation_laser(empty());
+const msg_voice_annotation_color = (): LocalizedString => messages().voice_annotation_color(empty());
+const msg_voice_annotation_color_option = (
+  inputs: Parameters<LocaleMessages['voice_annotation_color_option']>[0]
+): LocalizedString => messages().voice_annotation_color_option(inputs);
+const msg_voice_clear_my_annotations = (): LocalizedString => messages().voice_clear_my_annotations(empty());
+const msg_voice_clear_all_annotations = (): LocalizedString => messages().voice_clear_all_annotations(empty());
+const msg_voice_draw_together = (): LocalizedString => messages().voice_draw_together(empty());
 const msg_composer_attach_file = (): LocalizedString => messages().composer_attach_file(empty());
 const msg_composer_send = (): LocalizedString => messages().composer_send(empty());
 const msg_composer_send_enter = (): LocalizedString => messages().composer_send_enter(empty());
@@ -2233,6 +2244,15 @@ export { msg_voice_screen_share_failed as 'voice.screen_share_failed' };
 export { msg_voice_speaker_switch_failed as 'voice.speaker_switch_failed' };
 export { msg_voice_device_switch_failed as 'voice.device_switch_failed' };
 export { msg_voice_media_device_failed as 'voice.media_device_failed' };
+export { msg_voice_annotate as 'voice.annotate' };
+export { msg_voice_stop_annotate as 'voice.stop_annotate' };
+export { msg_voice_annotation_pen as 'voice.annotation_pen' };
+export { msg_voice_annotation_laser as 'voice.annotation_laser' };
+export { msg_voice_annotation_color as 'voice.annotation_color' };
+export { msg_voice_annotation_color_option as 'voice.annotation_color_option' };
+export { msg_voice_clear_my_annotations as 'voice.clear_my_annotations' };
+export { msg_voice_clear_all_annotations as 'voice.clear_all_annotations' };
+export { msg_voice_draw_together as 'voice.draw_together' };
 export { msg_composer_attach_file as 'composer.attach_file' };
 export { msg_composer_send as 'composer.send' };
 export { msg_composer_send_enter as 'composer.send_enter' };

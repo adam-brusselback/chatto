@@ -11,8 +11,7 @@
     parameters: {
       docs: {
         description: {
-          component:
-            'LiveKit video track thumbnail used by camera and screen-share call tiles.'
+          component: 'LiveKit video track thumbnail used by camera and screen-share call tiles.'
         }
       }
     }

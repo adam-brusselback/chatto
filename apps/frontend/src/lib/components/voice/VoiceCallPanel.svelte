@@ -34,6 +34,7 @@ Room sidebar panel for voice/video calls.
   import AudioDeviceMenu from './AudioDeviceMenu.svelte';
   import CallTileActionButton from './CallTileActionButton.svelte';
   import CallTileActionToolbar from './CallTileActionToolbar.svelte';
+  import AnnotationToolbar from './annotation/AnnotationToolbar.svelte';
   import UserContextMenu from '$lib/components/menus/UserContextMenu.svelte';
   import { getVoiceCallJoinErrorMessage } from '$lib/state/server/voiceCall.svelte';
   import type { Track } from 'livekit-client';
@@ -376,6 +377,17 @@ Room sidebar panel for voice/video calls.
       voiceCallState.toggleParticipantLocalMute(participant.key);
     }
   }
+
+  /**
+   * Whether this viewer may draw on a participant's shared screen: their
+   * drawing mode is armed, and the board is their own share or a share whose
+   * sharer has "draw together" enabled (the default).
+   */
+  function canDrawOnBoard(participant: DisplayParticipant): boolean {
+    if (!voiceCallState.isAnnotating) return false;
+    if (participant.isLocal) return true;
+    return voiceCallState.remoteDrawTogether[participant.key] ?? true;
+  }
 </script>
 
 {#snippet localMuteButton(participant: DisplayParticipant)}
@@ -397,8 +409,26 @@ Room sidebar panel for voice/video calls.
   />
 {/snippet}
 
-{#snippet mediaTileActions(participant: DisplayParticipant)}
-  <CallTileActionToolbar testId="call-media-actions">
+{#snippet mediaTileActions(participant: DisplayParticipant, isScreen = false)}
+  {@const showAnnotationTools = isScreen && isInThisCall && !!voiceCallState.annotations}
+  <CallTileActionToolbar
+    testId="call-media-actions"
+    forceVisible={showAnnotationTools && voiceCallState.isAnnotating}
+  >
+    {#if showAnnotationTools}
+      <AnnotationToolbar
+        annotating={voiceCallState.isAnnotating}
+        tool={voiceCallState.annotationTool}
+        colorIndex={voiceCallState.annotationColorIndex}
+        isSharerBoard={participant.isLocal}
+        drawTogether={voiceCallState.drawTogetherEnabled}
+        onToggleAnnotate={() => voiceCallState.toggleAnnotating()}
+        onSelectTool={(tool) => voiceCallState.setAnnotationTool(tool)}
+        onSelectColor={(index) => voiceCallState.setAnnotationColorIndex(index)}
+        onClear={() => voiceCallState.clearAnnotations(participant.key)}
+        onToggleDrawTogether={() => voiceCallState.toggleDrawTogether()}
+      />
+    {/if}
     <CallTileActionButton
       icon="mdi--fullscreen"
       label={m['voice.fullscreen_feed']()}
@@ -451,7 +481,7 @@ Room sidebar panel for voice/video calls.
 {#snippet participantHeader(
   participant: DisplayParticipant,
   label: string,
-  actions: 'media' | 'voice' | 'none',
+  actions: 'media' | 'screen' | 'voice' | 'none',
   showIndicators = true
 )}
   <div class={callTileHeaderClass}>
@@ -467,8 +497,8 @@ Room sidebar panel for voice/video calls.
       {/if}
     </button>
 
-    {#if actions === 'media'}
-      {@render mediaTileActions(participant)}
+    {#if actions === 'media' || actions === 'screen'}
+      {@render mediaTileActions(participant, actions === 'screen')}
     {:else if actions === 'voice'}
       {@render voiceTileActions(participant)}
     {/if}
@@ -550,7 +580,7 @@ Room sidebar panel for voice/video calls.
     {@render participantHeader(
       participant,
       m['voice.screen_title']({ name: participant.displayName }),
-      'media',
+      'screen',
       false
     )}
     <button
@@ -567,7 +597,9 @@ Room sidebar panel for voice/video calls.
         annotate={isInThisCall && !!voiceCallState.annotations}
         annotations={voiceCallState.annotations}
         annotationBoardId={participant.key}
-        annotationCanDraw={voiceCallState.isAnnotating}
+        annotationCanDraw={canDrawOnBoard(participant)}
+        annotationTool={voiceCallState.annotationTool}
+        annotationColorIndex={voiceCallState.annotationColorIndex}
       />
     </button>
   </div>
@@ -592,7 +624,7 @@ Room sidebar panel for voice/video calls.
       isScreen
         ? m['voice.screen_title']({ name: participant.displayName })
         : participant.displayName,
-      isScreen || isVideo ? 'media' : 'voice',
+      isScreen ? 'screen' : isVideo ? 'media' : 'voice',
       true
     )}
     <button
@@ -615,7 +647,9 @@ Room sidebar panel for voice/video calls.
           annotate={isInThisCall && !!voiceCallState.annotations}
           annotations={voiceCallState.annotations}
           annotationBoardId={participant.key}
-          annotationCanDraw={voiceCallState.isAnnotating}
+          annotationCanDraw={canDrawOnBoard(participant)}
+          annotationTool={voiceCallState.annotationTool}
+          annotationColorIndex={voiceCallState.annotationColorIndex}
         />
       {:else if isVideo}
         <VideoThumbnail
