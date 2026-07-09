@@ -25,7 +25,11 @@ import type { VoiceCallAPI } from '$lib/api-client/voiceCalls';
 import { deriveAnnotationKey } from '$lib/components/voice/annotation/annotationCrypto';
 import { CallAnnotations } from '$lib/components/voice/annotation/callAnnotations';
 import { ClearScope } from '$lib/components/voice/annotation/annotationCodec';
-import { DEFAULT_COLOR_INDEX } from '$lib/components/voice/annotation/palette';
+import {
+  DEFAULT_BRUSH_SIZE,
+  DEFAULT_COLOR_INDEX,
+  identityColorIndex
+} from '$lib/components/voice/annotation/palette';
 import type { AnnotationTool } from '$lib/components/voice/annotation/types';
 
 export type CallParticipantInfo = {
@@ -203,6 +207,9 @@ export class VoiceCallState {
 
   /** This viewer's annotation palette index (see palette.ts). */
   annotationColorIndex = $state(DEFAULT_COLOR_INDEX);
+
+  /** This viewer's brush diameter in CSS pixels (see palette.BRUSH_SIZES). */
+  annotationBrushSize = $state<number>(DEFAULT_BRUSH_SIZE);
 
   /**
    * The local sharer's "draw together" kill-switch for their own screen share.
@@ -483,6 +490,9 @@ export class VoiceCallState {
         this.annotations.onControlChange = (boardId, enabled) => {
           this.remoteDrawTogether = { ...this.remoteDrawTogether, [boardId]: enabled };
         };
+        // Seed the drawing color from the participant identity so users are
+        // visually distinct by default; the color picker can still override it.
+        this.annotationColorIndex = identityColorIndex(this.room.localParticipant.identity);
       } catch (error) {
         console.error('Failed to set up call annotations:', error);
         this.annotations = null;
@@ -811,6 +821,11 @@ export class VoiceCallState {
     this.annotationColorIndex = index;
   }
 
+  /** Select this viewer's brush diameter in CSS pixels. */
+  setAnnotationBrushSize(size: number): void {
+    this.annotationBrushSize = size;
+  }
+
   /**
    * Flip the local sharer's "draw together" switch and announce it to the call.
    * Enforcement is cooperative, like local mute: well-behaved clients disable
@@ -1105,6 +1120,7 @@ export class VoiceCallState {
     this.isAnnotating = false;
     this.annotationTool = 'pen';
     this.annotationColorIndex = DEFAULT_COLOR_INDEX;
+    this.annotationBrushSize = DEFAULT_BRUSH_SIZE;
     this.drawTogetherEnabled = true;
     this.remoteDrawTogether = {};
     if (wasConnected && disconnectedRoomId && disconnectedCallId) {

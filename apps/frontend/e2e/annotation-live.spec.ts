@@ -202,10 +202,12 @@ base('two participants draw on a live shared screen', async ({ page, browser, se
       await page.screenshot({ path: `${SHOTS}/1-user-a-drew-pen-stroke.png` });
       await pageB.screenshot({ path: `${SHOTS}/2-user-b-sees-a-stroke.png` });
 
-      // --- B draws back in a different color.
+      // --- B draws back in a different color and a thicker brush.
       await armDrawing(pageB);
       await pageB.locator(CARD).getByTestId('call-annotation-color').click();
       await pageB.getByTestId('call-annotation-color-3').click();
+      await pageB.locator(CARD).getByTestId('call-annotation-size').click();
+      await pageB.locator(CARD).getByTestId('call-annotation-size').click();
       await drawStroke(pageB, { x: 0.35, y: 0.65 }, { x: 0.62, y: 0.3 });
 
       await expect.poll(() => countPaintedPixels(page, 0), { timeout: 15_000 }).toBeGreaterThan(50);

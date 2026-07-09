@@ -17,6 +17,12 @@ import type { NormalizedPoint } from './types';
 export interface RenderableStroke {
   /** Resolved CSS color string (palette resolution happens before rendering). */
   color: string;
+  /**
+   * Author-attribution halo drawn as a ring around the stroke, in the author's
+   * stable identity color (see palette.identityColorIndex). Omitted in
+   * standalone/local rendering where there is no author identity.
+   */
+  haloColor?: string;
   /** Brush diameter in CSS pixels. */
   size: number;
   points: NormalizedPoint[];
@@ -57,6 +63,16 @@ export function renderStroke(
     path.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
   }
   path.closePath();
+
+  // Author halo: stroke the closed outline so a ring of the author's identity
+  // color surrounds the line, attributing it and keeping it visible over
+  // similarly-colored shared content.
+  if (stroke.haloColor) {
+    ctx.strokeStyle = stroke.haloColor;
+    ctx.lineWidth = Math.max(2.5, stroke.size * 0.5);
+    ctx.lineJoin = 'round';
+    ctx.stroke(path);
+  }
 
   ctx.fillStyle = stroke.color;
   ctx.fill(path);

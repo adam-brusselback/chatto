@@ -24,7 +24,12 @@ stroke lands on the same shared-content pixel for every viewer.
 <script lang="ts">
   import type { CallAnnotations } from './callAnnotations';
   import { clampToUnit, contentRect, fromNormalized, isInsideUnit, toNormalized } from './coords';
-  import { colorForIndex, DEFAULT_BRUSH_SIZE, DEFAULT_COLOR_INDEX } from './palette';
+  import {
+    colorForIndex,
+    DEFAULT_BRUSH_SIZE,
+    DEFAULT_COLOR_INDEX,
+    identityColorIndex
+  } from './palette';
   import { renderStroke, type RenderableStroke } from './renderStrokes';
   import type { AnnotationCommit, AnnotationTool, NormalizedPoint } from './types';
 
@@ -154,20 +159,28 @@ stroke lands on the same shared-content pixel for every viewer.
     return Math.max(0, 1 - ageMs / LASER_FADE_MS);
   }
 
+  // The identity color used for attribution halos on strokes and laser glows.
+  function localHaloColor(): string {
+    return colorForIndex(identityColorIndex(annotations?.localIdentity ?? ''));
+  }
+
   function drawLaserDot(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
     color: string,
+    haloColor: string,
     alpha: number
   ): void {
     ctx.save();
-    ctx.globalAlpha = alpha * 0.35;
-    ctx.fillStyle = color;
+    // Outer glow in the author's identity color attributes the pointer.
+    ctx.globalAlpha = alpha * 0.45;
+    ctx.fillStyle = haloColor;
     ctx.beginPath();
     ctx.arc(x, y, 12, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, 5.5, 0, Math.PI * 2);
     ctx.fill();
@@ -205,7 +218,12 @@ stroke lands on the same shared-content pixel for every viewer.
       if (currentPoints && currentPoints.length > 0) {
         renderStroke(
           liveContext,
-          { color: colorForIndex(colorIndex), size, points: currentPoints },
+          {
+            color: colorForIndex(colorIndex),
+            haloColor: annotations ? localHaloColor() : undefined,
+            size,
+            points: currentPoints
+          },
           content
         );
       }
@@ -218,7 +236,14 @@ stroke lands on the same shared-content pixel for every viewer.
           if (alpha <= 0) continue;
           lasersVisible = true;
           const at = fromNormalized({ x: laser.x, y: laser.y }, content);
-          drawLaserDot(liveContext, at.x, at.y, colorForIndex(laser.colorIndex), alpha);
+          drawLaserDot(
+            liveContext,
+            at.x,
+            at.y,
+            colorForIndex(laser.colorIndex),
+            colorForIndex(identityColorIndex(laser.sender)),
+            alpha
+          );
         }
       }
       if (localLaser) {
@@ -226,7 +251,7 @@ stroke lands on the same shared-content pixel for every viewer.
         if (alpha > 0) {
           lasersVisible = true;
           const at = fromNormalized(localLaser, content);
-          drawLaserDot(liveContext, at.x, at.y, colorForIndex(colorIndex), alpha);
+          drawLaserDot(liveContext, at.x, at.y, colorForIndex(colorIndex), localHaloColor(), alpha);
         } else if (!localLaser.active) {
           localLaser = null;
         }

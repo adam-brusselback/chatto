@@ -61,6 +61,7 @@
     "annotation_laser": "Laser pointer",
     "annotation_color": "Drawing color",
     "annotation_color_option": "Color {number}",
+    "annotation_size": "Stroke width",
     "clear_my_annotations": "Clear my drawings",
     "clear_all_annotations": "Clear all drawings",
     "draw_together": "Let others draw"

@@ -12,6 +12,7 @@ function makeProps(overrides: Record<string, unknown> = {}) {
     onToggleAnnotate: vi.fn(),
     onSelectTool: vi.fn(),
     onSelectColor: vi.fn(),
+    onSelectBrushSize: vi.fn(),
     onClear: vi.fn(),
     onToggleDrawTogether: vi.fn(),
     ...overrides
@@ -46,6 +47,22 @@ describe('AnnotationToolbar', () => {
 
     q(container, 'call-annotation-clear')!.click();
     expect(props.onClear).toHaveBeenCalledOnce();
+  });
+
+  it('cycles the brush size through the offered widths', () => {
+    const props = makeProps({ annotating: true, brushSize: 4, onSelectBrushSize: vi.fn() });
+    const { container } = render(AnnotationToolbar, props);
+
+    q(container, 'call-annotation-size')!.click();
+    expect(props.onSelectBrushSize).toHaveBeenCalledWith(7);
+  });
+
+  it('wraps the brush size cycle back to the smallest width', () => {
+    const props = makeProps({ annotating: true, brushSize: 12, onSelectBrushSize: vi.fn() });
+    const { container } = render(AnnotationToolbar, props);
+
+    q(container, 'call-annotation-size')!.click();
+    expect(props.onSelectBrushSize).toHaveBeenCalledWith(4);
   });
 
   it('opens the color menu and reports the picked palette index', async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ANNOTATION_TOPIC_LOSSY, ANNOTATION_TOPIC_RELIABLE, ClearScope } from './annotationCodec';
 import { deriveAnnotationKey } from './annotationCrypto';
 import { CallAnnotations } from './callAnnotations';
-import { ANNOTATION_PALETTE } from './palette';
+import { ANNOTATION_PALETTE, colorForIndex, identityColorIndex } from './palette';
 import type { NormalizedPoint } from './types';
 
 interface Sent {
@@ -53,6 +53,24 @@ describe('CallAnnotations', () => {
     expect(strokes[0].points).toHaveLength(2);
     expect(strokes[0].points[0].x).toBeCloseTo(0.1, 3);
     expect(strokes[0].points[1].y).toBeCloseTo(0.4, 3);
+  });
+
+  it('attributes strokes with an author-derived halo color', async () => {
+    const { alice, bob, sent } = await makeParticipants();
+    await alice.publishStrokeCommit(BOARD, 1, 0, 4, POINTS);
+    await bob.handleData(sent[0].data, 'alice', ANNOTATION_TOPIC_RELIABLE);
+    await alice.publishStrokeCommit(BOARD, 2, 0, 4, POINTS);
+    await bob.handleData(sent[1].data, 'carol-with-a-different-hash', ANNOTATION_TOPIC_RELIABLE);
+
+    const strokes = bob.committedStrokes(BOARD);
+    expect(strokes).toHaveLength(2);
+    const halos = strokes.map((stroke) => stroke.haloColor);
+    expect(halos[0]).toBe(colorForIndex(identityColorIndex('alice')));
+    expect(halos[1]).toBe(colorForIndex(identityColorIndex('carol-with-a-different-hash')));
+    // The sender's own record carries their halo too.
+    expect(alice.committedStrokes(BOARD)[0].haloColor).toBe(
+      colorForIndex(identityColorIndex('alice'))
+    );
   });
 
   it('routes a lossy delta as a pending stroke, then a commit finalizes it', async () => {

@@ -13,24 +13,28 @@ action is a callback, so the voice-call panel owns the store wiring.
   import * as m from '$lib/i18n/messages';
   import FloatingPopover from '$lib/ui/FloatingPopover.svelte';
   import CallTileActionButton from '../CallTileActionButton.svelte';
-  import { ANNOTATION_PALETTE, colorForIndex } from './palette';
+  import { ANNOTATION_PALETTE, BRUSH_SIZES, colorForIndex, DEFAULT_BRUSH_SIZE } from './palette';
   import type { AnnotationTool } from './types';
 
   let {
     annotating,
     tool,
     colorIndex,
+    brushSize = DEFAULT_BRUSH_SIZE,
     isSharerBoard = false,
     drawTogether = true,
     onToggleAnnotate,
     onSelectTool,
     onSelectColor,
+    onSelectBrushSize,
     onClear,
     onToggleDrawTogether
   }: {
     annotating: boolean;
     tool: AnnotationTool;
     colorIndex: number;
+    /** Brush diameter in CSS pixels; cycled through palette.BRUSH_SIZES. */
+    brushSize?: number;
     /** True when this tile shows the viewer's own shared screen. */
     isSharerBoard?: boolean;
     /** The sharer's kill-switch state (only meaningful on the sharer's board). */
@@ -38,6 +42,7 @@ action is a callback, so the voice-call panel owns the store wiring.
     onToggleAnnotate: () => void;
     onSelectTool: (tool: AnnotationTool) => void;
     onSelectColor: (index: number) => void;
+    onSelectBrushSize?: (size: number) => void;
     onClear: () => void;
     onToggleDrawTogether?: () => void;
   } = $props();
@@ -48,6 +53,15 @@ action is a callback, so the voice-call panel owns the store wiring.
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     colorMenuAnchor = { top: rect.top, bottom: rect.bottom, left: rect.left };
   }
+
+  // Cycle through the offered brush sizes; unknown sizes restart at the first.
+  function cycleBrushSize(): void {
+    const index = BRUSH_SIZES.indexOf(brushSize as (typeof BRUSH_SIZES)[number]);
+    onSelectBrushSize?.(BRUSH_SIZES[(index + 1) % BRUSH_SIZES.length]);
+  }
+
+  // Dot diameter previewing the current brush size (clamped to fit the button).
+  let brushDotPx = $derived(Math.min(18, Math.max(6, brushSize + 3)));
 </script>
 
 <CallTileActionButton
@@ -83,6 +97,20 @@ action is a callback, so the voice-call panel owns the store wiring.
     <span
       class="h-4 w-4 rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0_/_0.2)]"
       style="background-color: {colorForIndex(colorIndex)}"
+      aria-hidden="true"
+    ></span>
+  </button>
+  <button
+    type="button"
+    class="pointer-events-auto flex h-10 w-10 cursor-pointer items-center justify-center rounded text-muted transition-[background-color,color,scale] hover:bg-surface-200 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary active:scale-[0.96]"
+    title={m['voice.annotation_size']()}
+    aria-label={m['voice.annotation_size']()}
+    data-testid="call-annotation-size"
+    onclick={cycleBrushSize}
+  >
+    <span
+      class="rounded-full bg-current"
+      style="width: {brushDotPx}px; height: {brushDotPx}px"
       aria-hidden="true"
     ></span>
   </button>

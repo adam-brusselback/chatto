@@ -24,7 +24,7 @@ import {
   type AnnotationFrame
 } from './annotationCodec';
 import { open, seal } from './annotationCrypto';
-import { colorForIndex } from './palette';
+import { colorForIndex, identityColorIndex } from './palette';
 import type { RenderableStroke } from './renderStrokes';
 import type { NormalizedPoint } from './types';
 
@@ -86,6 +86,11 @@ export class CallAnnotations {
     this.#key = key;
     this.#localIdentity = localIdentity;
     this.#publish = publish;
+  }
+
+  /** This participant's LiveKit identity (authors the local strokes/laser). */
+  get localIdentity(): string {
+    return this.#localIdentity;
   }
 
   /**
@@ -411,6 +416,7 @@ export class CallAnnotations {
       if (stroke.committed === committed && stroke.points.length > 0) {
         result.push({
           color: colorForIndex(stroke.colorIndex),
+          haloColor: colorForIndex(identityColorIndex(stroke.author)),
           size: stroke.size,
           points: stroke.points
         });

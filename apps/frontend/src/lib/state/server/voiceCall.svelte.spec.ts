@@ -31,6 +31,7 @@ import {
   AnnotationFrameType,
   encodeAnnotationFrame
 } from '$lib/components/voice/annotation/annotationCodec';
+import { identityColorIndex } from '$lib/components/voice/annotation/palette';
 
 // Real Web Crypto captured before beforeEach stubs `crypto`, so the annotation
 // data-channel test can derive keys and seal payloads.
@@ -329,6 +330,15 @@ describe('VoiceCallState', () => {
     await vi.waitFor(() => {
       expect(state.annotations?.committedStrokes('sharer-1')).toHaveLength(1);
     });
+  });
+
+  it('seeds the drawing color from the participant identity on join', async () => {
+    vi.stubGlobal('crypto', realCrypto);
+    const client = createVoiceCallClient();
+    const state = new VoiceCallState(client);
+    await state.join('wss://livekit.example.test', 'R1');
+
+    expect(state.annotationColorIndex).toBe(identityColorIndex('local-user'));
   });
 
   it('mirrors remote draw-together control frames into reactive state', async () => {

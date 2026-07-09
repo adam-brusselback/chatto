@@ -61,6 +61,7 @@
     "annotation_laser": "Laserpointer",
     "annotation_color": "Zeichenfarbe",
     "annotation_color_option": "Farbe {number}",
+    "annotation_size": "Strichstärke",
     "clear_my_annotations": "Meine Zeichnungen löschen",
     "clear_all_annotations": "Alle Zeichnungen löschen",
     "draw_together": "Andere zeichnen lassen"

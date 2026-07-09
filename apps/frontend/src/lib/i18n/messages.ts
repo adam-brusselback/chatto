@@ -932,6 +932,7 @@ const msg_voice_annotation_color = (): LocalizedString => messages().voice_annot
 const msg_voice_annotation_color_option = (
   inputs: Parameters<LocaleMessages['voice_annotation_color_option']>[0]
 ): LocalizedString => messages().voice_annotation_color_option(inputs);
+const msg_voice_annotation_size = (): LocalizedString => messages().voice_annotation_size(empty());
 const msg_voice_clear_my_annotations = (): LocalizedString => messages().voice_clear_my_annotations(empty());
 const msg_voice_clear_all_annotations = (): LocalizedString => messages().voice_clear_all_annotations(empty());
 const msg_voice_draw_together = (): LocalizedString => messages().voice_draw_together(empty());
@@ -2250,6 +2251,7 @@ export { msg_voice_annotation_pen as 'voice.annotation_pen' };
 export { msg_voice_annotation_laser as 'voice.annotation_laser' };
 export { msg_voice_annotation_color as 'voice.annotation_color' };
 export { msg_voice_annotation_color_option as 'voice.annotation_color_option' };
+export { msg_voice_annotation_size as 'voice.annotation_size' };
 export { msg_voice_clear_my_annotations as 'voice.clear_my_annotations' };
 export { msg_voice_clear_all_annotations as 'voice.clear_all_annotations' };
 export { msg_voice_draw_together as 'voice.draw_together' };

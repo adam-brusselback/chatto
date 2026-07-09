@@ -42,7 +42,8 @@ resolution to request for sidebar-width tiles.
     annotationBoardId = '',
     annotationCanDraw = false,
     annotationTool = 'pen',
-    annotationColorIndex = 0
+    annotationColorIndex = 0,
+    annotationBrushSize = 4
   }: {
     track: Track;
     name: string;
@@ -62,6 +63,7 @@ resolution to request for sidebar-width tiles.
     annotationCanDraw?: boolean;
     annotationTool?: AnnotationTool;
     annotationColorIndex?: number;
+    annotationBrushSize?: number;
   } = $props();
 
   let videoEl = $state<HTMLVideoElement | null>(null);
@@ -131,6 +133,7 @@ resolution to request for sidebar-width tiles.
       canDraw={annotationCanDraw}
       tool={annotationTool}
       colorIndex={annotationColorIndex}
+      size={annotationBrushSize}
     />
   {/if}
 </div>

@@ -420,11 +420,13 @@ Room sidebar panel for voice/video calls.
         annotating={voiceCallState.isAnnotating}
         tool={voiceCallState.annotationTool}
         colorIndex={voiceCallState.annotationColorIndex}
+        brushSize={voiceCallState.annotationBrushSize}
         isSharerBoard={participant.isLocal}
         drawTogether={voiceCallState.drawTogetherEnabled}
         onToggleAnnotate={() => voiceCallState.toggleAnnotating()}
         onSelectTool={(tool) => voiceCallState.setAnnotationTool(tool)}
         onSelectColor={(index) => voiceCallState.setAnnotationColorIndex(index)}
+        onSelectBrushSize={(size) => voiceCallState.setAnnotationBrushSize(size)}
         onClear={() => voiceCallState.clearAnnotations(participant.key)}
         onToggleDrawTogether={() => voiceCallState.toggleDrawTogether()}
       />
@@ -600,6 +602,7 @@ Room sidebar panel for voice/video calls.
         annotationCanDraw={canDrawOnBoard(participant)}
         annotationTool={voiceCallState.annotationTool}
         annotationColorIndex={voiceCallState.annotationColorIndex}
+        annotationBrushSize={voiceCallState.annotationBrushSize}
       />
     </button>
   </div>
@@ -650,6 +653,7 @@ Room sidebar panel for voice/video calls.
           annotationCanDraw={canDrawOnBoard(participant)}
           annotationTool={voiceCallState.annotationTool}
           annotationColorIndex={voiceCallState.annotationColorIndex}
+          annotationBrushSize={voiceCallState.annotationBrushSize}
         />
       {:else if isVideo}
         <VideoThumbnail
