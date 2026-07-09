@@ -363,6 +363,16 @@ stroke lands on the same shared-content pixel for every viewer.
     }
     scheduleFrame();
   }
+
+  function handleClick(event: MouseEvent): void {
+    // While drawing is armed, pointer input on this surface is drawing input.
+    // Swallow the synthesized click so it cannot bubble to the media tile's
+    // button underneath (which would open the participant menu on pen-up).
+    if (canDraw) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
 </script>
 
 <div bind:this={rootEl} class="absolute inset-0" {@attach setup}>
@@ -378,5 +388,6 @@ stroke lands on the same shared-content pixel for every viewer.
     onpointermove={handlePointerMove}
     onpointerup={handlePointerUp}
     onpointercancel={handlePointerUp}
+    onclick={handleClick}
   ></canvas>
 </div>
